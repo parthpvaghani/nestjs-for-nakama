@@ -10,12 +10,15 @@ import { validate } from 'class-validator';
 import { HttpException } from '@nestjs/common/exceptions/http.exception';
 import { HttpStatus } from '@nestjs/common';
 import * as argon2 from 'argon2';
+import {HttpService} from '@nestjs/axios'
+import { networkInterfaces } from 'os';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(UserEntity)
-    private readonly userRepository: Repository<UserEntity>
+    private readonly userRepository: Repository<UserEntity>,
+    private readonly httpService:HttpService,
   ) {}
 
   async findAll(): Promise<UserEntity[]> {
@@ -50,7 +53,6 @@ export class UserService {
     if (user) {
       const errors = {username: 'Username and email must be unique.'};
       throw new HttpException({message: 'Input data validation failed', errors}, HttpStatus.BAD_REQUEST);
-
     }
 
     // create new user
@@ -65,8 +67,26 @@ export class UserService {
       throw new HttpException({message: 'Input data validation failed', _errors}, HttpStatus.BAD_REQUEST);
 
     } else {
+    const email = dto.email
+    const password = dto.password
+    const url = `http://127.0.0.1:7350/v2/account/authenticate/email?create=true&username=${email}`;
+    const options = {
+      headers: {
+        'Content-Type': 'application/json',
+      },auth: {
+        username: 'defaultkey',
+        password: ''
+      }
+    };
+    const response = await this.httpService.post(url, {
+      email,password
+    }, options)
+    .toPromise()
+    const data = response.data;
+    const nToken = data.token;
+    const nRefToken = data.refresh_token;
       const savedUser = await this.userRepository.save(newUser);
-      return this.buildUserRO(savedUser);
+      return this.buildUserRO(savedUser,nToken,nRefToken);
     }
 
   }
@@ -91,12 +111,12 @@ export class UserService {
       throw new HttpException({errors}, 401);
     }
 
-    return this.buildUserRO(user);
+    return this.buildUserRO(user,null,null);
   }
 
   async findByEmail(email: string): Promise<UserRO>{
     const user = await this.userRepository.findOne({email: email});
-    return this.buildUserRO(user);
+    return this.buildUserRO(user,null,null);
   }
 
   public generateJWT(user) {
@@ -112,14 +132,16 @@ export class UserService {
     }, SECRET);
   };
 
-  private buildUserRO(user: UserEntity) {
+  private buildUserRO(user: UserEntity,nToken,nRefToken) {
     const userRO = {
       id: user.id,
       username: user.username,
       email: user.email,
       bio: user.bio,
       token: this.generateJWT(user),
-      image: user.image
+      image: user.image,
+      nToken:nToken,
+      nRefToken:nRefToken
     };
 
     return {user: userRO};
