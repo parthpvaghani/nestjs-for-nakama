@@ -8,7 +8,7 @@ import { ProfileModule } from './profile/profile.module';
   imports: [
     TypeOrmModule.forRoot(),
     UserModule,
-    ProfileModule,
+    ProfileModule
   ],
   controllers: [
     AppController
